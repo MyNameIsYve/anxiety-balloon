@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background -->
+  <rect width="512" height="512" fill="#1a1a2e" rx="80"/>
+
+  <!-- Balloon body -->
+  <ellipse cx="256" cy="210" rx="100" ry="120" fill="#6b4e95"/>
+
+  <!-- Balloon highlight -->
+  <ellipse cx="222" cy="168" rx="28" ry="18" fill="rgba(255,255,255,0.18)"/>
+
+  <!-- Knot -->
+  <ellipse cx="256" cy="332" rx="13" ry="10" fill="#4a3570"/>
+
+  <!-- String -->
+  <path d="M256 342 C270 370 240 395 256 420 C265 440 245 455 256 470"
+        stroke="#6b5b95" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+</svg>
