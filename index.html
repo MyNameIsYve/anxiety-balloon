@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anxiety Balloon</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      color: #c9b99a;
+      font-family: 'Georgia', serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    #canvas-container {
+      position: relative;
+      width: 100vw;
+      flex: 1;
+    }
+
+    #canvas-container canvas {
+      display: block;
+    }
+
+    #ui {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 20px 28px;
+      background: linear-gradient(to top, #0d0d1a 0%, transparent 100%);
+      position: relative;
+      z-index: 10;
+    }
+
+    #affirmation-btn {
+      background: transparent;
+      border: 1px solid #6b5b95;
+      color: #c9b99a;
+      font-family: 'Georgia', serif;
+      font-size: 15px;
+      font-style: italic;
+      padding: 12px 28px;
+      border-radius: 40px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: border-color 0.3s, color 0.3s, background 0.3s;
+      max-width: 500px;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    #affirmation-btn:hover {
+      border-color: #9b8ab8;
+      color: #e8d8c0;
+      background: rgba(107, 91, 149, 0.1);
+    }
+
+    #affirmation-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+
+    #footer {
+      font-size: 12px;
+      color: #6b5b95;
+      letter-spacing: 1px;
+      opacity: 0.8;
+    }
+
+    /* Game over overlay */
+    #game-over {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(10, 10, 20, 0.93);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      text-align: center;
+      padding: 40px;
+      animation: fadeInOverlay 1.2s ease forwards;
+    }
+
+    #game-over.visible {
+      display: flex;
+    }
+
+    @keyframes fadeInOverlay {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    #game-over h1 {
+      font-size: 22px;
+      font-weight: normal;
+      color: #c9b99a;
+      margin-bottom: 24px;
+      line-height: 1.7;
+      max-width: 480px;
+    }
+
+    #game-over .survival-time {
+      font-size: 14px;
+      color: #6b5b95;
+      margin-bottom: 40px;
+      letter-spacing: 1.5px;
+    }
+
+    #restart-btn {
+      background: transparent;
+      border: 1px solid #6b5b95;
+      color: #c9b99a;
+      font-family: 'Georgia', serif;
+      font-size: 14px;
+      padding: 10px 32px;
+      border-radius: 30px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all 0.3s;
+    }
+
+    #restart-btn:hover {
+      border-color: #9b8ab8;
+      color: #e8d8c0;
+      background: rgba(107, 91, 149, 0.15);
+    }
+  </style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="ui">
+  <button id="affirmation-btn">
+    "I'm holding up. I'm not giving up on myself."
+  </button>
+  <div id="footer">surviving since <span id="since-date">—</span> &nbsp;·&nbsp; <span id="days-count">0</span> days</div>
+</div>
+
+<div id="game-over">
+  <h1 id="game-over-msg"></h1>
+  <div class="survival-time" id="game-over-time"></div>
+  <button id="restart-btn">Begin again</button>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+
+const STORAGE_KEY = 'anxiety-balloon-v1';
+const MAX_CLICKS = 10;
+const TOTAL_LIVES = 5;
+
+function defaultState() {
+  return {
+    balloons: [0, 0, 0, 0, 0], // click counts; index 0 = active
+    livesLeft: TOTAL_LIVES,
+    sessionStart: Date.now()
+  };
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultState();
+    const s = JSON.parse(raw);
+    // Validate
+    if (!Array.isArray(s.balloons) || typeof s.livesLeft !== 'number' || !s.sessionStart) {
+      return defaultState();
+    }
+    return s;
+  } catch {
+    return defaultState();
+  }
+}
+
+function saveState(s) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+}
+
+function clearState() {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+let state = loadState();
+
+// ─── Footer ──────────────────────────────────────────────────────────────────
+
+function updateFooter() {
+  const d = new Date(state.sessionStart);
+  document.getElementById('since-date').textContent =
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const days = Math.floor((Date.now() - state.sessionStart) / 86400000);
+  document.getElementById('days-count').textContent = days;
+}
+
+updateFooter();
+setInterval(updateFooter, 60000);
+
+// ─── Game over ───────────────────────────────────────────────────────────────
+
+function showGameOver() {
+  const days = Math.floor((Date.now() - state.sessionStart) / 86400000);
+  const msg = days === 0
+    ? "All five are gone. Even on the hardest days, you were here.\nThat matters."
+    : `You held on for ${days} day${days === 1 ? '' : 's'}.\nIt's okay to have needed more than you could carry.\nCome back when you're ready.`;
+  document.getElementById('game-over-msg').textContent = msg;
+  document.getElementById('game-over-time').textContent =
+    days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'}`;
+  document.getElementById('game-over').classList.add('visible');
+  document.getElementById('affirmation-btn').disabled = true;
+}
+
+document.getElementById('restart-btn').addEventListener('click', () => {
+  clearState();
+  state = defaultState();
+  saveState(state);
+  document.getElementById('game-over').classList.remove('visible');
+  document.getElementById('affirmation-btn').disabled = false;
+  updateFooter();
+  // Signal p5 to reinitialize
+  window._resetBalloon = true;
+});
+
+// ─── Affirmation button ───────────────────────────────────────────────────────
+
+document.getElementById('affirmation-btn').addEventListener('click', () => {
+  if (state.livesLeft === 0) return;
+  if (state.balloons[0] === 0) return;
+  state.balloons[0] = Math.max(0, state.balloons[0] - 2);
+  saveState(state);
+  window._affirmationClicked = true;
+});
+
+// ─── p5.js Sketch ────────────────────────────────────────────────────────────
+
+new p5(function(p) {
+
+  // ── Balloon visual params
+  let displayClicks = 0;      // smoothly animated toward state.balloons[0]
+  let targetClicks = 0;
+
+  // ── Shake animation
+  let shaking = false;
+  let shakeTimer = 0;
+  let shakeX = 0;
+
+  // ── Burst particles
+  let particles = [];
+
+  // ── Transition: new balloon floating in
+  let transitioning = false;
+  let transitionScale = 0;     // 0 → 1 during transition
+
+  // ── Flash
+  let flashAlpha = 0;
+
+  // ── Canvas dims
+  let cw, ch;
+
+  // ── Colors
+  const bgColor = '#1a1a2e';
+  let calmColor, tenseColor;
+
+  // ── Puff animation
+  let puffExtra = 0;     // extra scale added on click, decays
+
+  p.setup = function() {
+    const container = document.getElementById('canvas-container');
+    cw = container.offsetWidth;
+    ch = container.offsetHeight;
+    const cnv = p.createCanvas(cw, ch);
+    cnv.parent('canvas-container');
+    p.colorMode(p.RGB, 255);
+
+    calmColor = p.color(107, 78, 149);  // muted purple
+    tenseColor = p.color(139, 26, 26);  // deep red
+
+    targetClicks = state.balloons[0];
+    displayClicks = targetClicks;
+    p.noStroke();
+  };
+
+  p.windowResized = function() {
+    const container = document.getElementById('canvas-container');
+    cw = container.offsetWidth;
+    ch = container.offsetHeight;
+    p.resizeCanvas(cw, ch);
+  };
+
+  p.draw = function() {
+    // Handle external signals
+    if (window._resetBalloon) {
+      window._resetBalloon = false;
+      displayClicks = 0;
+      targetClicks = 0;
+      puffExtra = 0;
+      shaking = false;
+      particles = [];
+      transitioning = false;
+      flashAlpha = 0;
+    }
+    if (window._affirmationClicked) {
+      window._affirmationClicked = false;
+      targetClicks = state.balloons[0];
+    }
+
+    // Background
+    p.background(bgColor);
+
+    // Smooth display toward target
+    displayClicks += (targetClicks - displayClicks) * 0.12;
+
+    // Decay puff
+    puffExtra *= 0.82;
+
+    // Decay flash
+    flashAlpha *= 0.88;
+
+    // Active balloon position
+    const bx = cw / 2 + shakeX;
+    const by = ch * 0.52;
+
+    // ── Draw backup balloons (behind)
+    drawBackupBalloons(bx, by);
+
+    // ── Draw active balloon (if lives remain and not mid-burst)
+    if (state.livesLeft > 0 && !shaking) {
+      if (transitioning) {
+        // Float in
+        transitionScale = p.lerp(transitionScale, 1, 0.07);
+        if (transitionScale > 0.98) {
+          transitionScale = 1;
+          transitioning = false;
+        }
+        const t = transitionScale;
+        drawBalloon(bx, by, displayClicks, t, 1.0);
+      } else {
+        drawBalloon(bx, by, displayClicks, 1, 1.0);
+      }
+      drawCounter(bx, by, state.balloons[0]);
+    }
+
+    // ── Shake animation
+    if (shaking) {
+      shakeTimer++;
+      if (shakeTimer < 18) {
+        shakeX = (Math.random() - 0.5) * 22;
+        // During shake, draw balloon
+        drawBalloon(bx, by, MAX_CLICKS, 1, 1.0 - shakeTimer / 18);
+        drawCounter(bx, by, MAX_CLICKS);
+      } else {
+        // Balloon gone — scatter particles, flash
+        shaking = false;
+        shakeX = 0;
+        flashAlpha = 220;
+        spawnParticles(cw / 2, by);
+        // Remove this balloon from state
+        state.balloons.shift();
+        state.livesLeft--;
+        saveState(state);
+        if (state.livesLeft === 0) {
+          setTimeout(showGameOver, 800);
+        } else {
+          // Next balloon floats in
+          targetClicks = state.balloons[0];
+          displayClicks = 0;
+          transitioning = true;
+          transitionScale = 0.1;
+        }
+      }
+    }
+
+    // ── Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const pt = particles[i];
+      pt.x += pt.vx;
+      pt.y += pt.vy;
+      pt.vy += 0.18;
+      pt.life -= 0.025;
+      pt.vx *= 0.97;
+      if (pt.life <= 0) { particles.splice(i, 1); continue; }
+      p.noStroke();
+      p.fill(p.red(pt.col), p.green(pt.col), p.blue(pt.col), pt.life * 255);
+      p.ellipse(pt.x, pt.y, pt.size * pt.life, pt.size * pt.life);
+    }
+
+    // ── Flash overlay
+    if (flashAlpha > 1) {
+      p.noStroke();
+      p.fill(200, 180, 255, flashAlpha);
+      p.rect(0, 0, cw, ch);
+    }
+  };
+
+  function balloonScale(clicks) {
+    const t = clicks / MAX_CLICKS;
+    return 1.0 + t * 0.85 + puffExtra;
+  }
+
+  function balloonColor(clicks) {
+    const t = clicks / MAX_CLICKS;
+    return p.lerpColor(calmColor, tenseColor, t);
+  }
+
+  function drawBalloon(x, y, clicks, transScale, alpha) {
+    const sc = balloonScale(clicks) * transScale;
+    const baseW = 80;
+    const baseH = 96;
+    const bw = baseW * sc;
+    const bh = baseH * sc;
+    const col = balloonColor(clicks);
+
+    // Slight float bob
+    const bobY = Math.sin(p.frameCount * 0.025) * 4;
+    const by2 = y + bobY;
+
+    p.noStroke();
+
+    // Glow halo when tense
+    if (clicks > 5) {
+      const glowA = p.map(clicks, 5, 10, 0, 55) * alpha;
+      p.fill(p.red(tenseColor), p.green(tenseColor), p.blue(tenseColor), glowA);
+      p.ellipse(x, by2, bw * 1.5, bh * 1.5);
+    }
+
+    // Balloon body
+    p.fill(p.red(col), p.green(col), p.blue(col), 230 * alpha);
+    p.ellipse(x, by2, bw, bh);
+
+    // Highlight
+    p.fill(255, 255, 255, 38 * alpha);
+    p.ellipse(x - bw * 0.18, by2 - bh * 0.22, bw * 0.28, bh * 0.18);
+
+    // Knot
+    const knotY = by2 + bh / 2;
+    p.fill(p.red(col) * 0.7, p.green(col) * 0.7, p.blue(col) * 0.7, 230 * alpha);
+    p.ellipse(x, knotY, 10 * sc, 8 * sc);
+
+    // String (wavy bezier)
+    const wobble = Math.sin(p.frameCount * 0.04) * 10 * (clicks / MAX_CLICKS + 0.3);
+    p.stroke(107, 91, 149, 160 * alpha);
+    p.strokeWeight(1.5);
+    p.noFill();
+    p.beginShape();
+    p.vertex(x, knotY + 4);
+    p.bezierVertex(x + wobble, knotY + 30, x - wobble, knotY + 60, x, knotY + 80);
+    p.endShape();
+    p.noStroke();
+  }
+
+  function drawBackupBalloons(activeBx, activeBy) {
+    const lives = state.livesLeft;
+    if (lives <= 1) return; // Only active, no backups to show
+
+    const backupCount = lives - 1;
+    const spacing = 60;
+    const startX = cw / 2 - (backupCount - 1) * spacing / 2;
+    const backY = activeBy - 130;
+
+    for (let i = 0; i < backupCount; i++) {
+      const bx = startX + i * spacing;
+      drawBalloonSmall(bx, backY, 0, 0.38);
+    }
+  }
+
+  function drawBalloonSmall(x, y, clicks, alpha) {
+    const col = balloonColor(clicks);
+    const bw = 34;
+    const bh = 42;
+    p.noStroke();
+    p.fill(p.red(col), p.green(col), p.blue(col), 200 * alpha);
+    p.ellipse(x, y, bw, bh);
+    p.fill(255, 255, 255, 28 * alpha);
+    p.ellipse(x - 6, y - 9, 9, 6);
+    p.fill(p.red(col) * 0.7, p.green(col) * 0.7, p.blue(col) * 0.7, 200 * alpha);
+    p.ellipse(x, y + bh / 2, 4, 3.5);
+    p.stroke(107, 91, 149, 120 * alpha);
+    p.strokeWeight(1);
+    p.noFill();
+    p.beginShape();
+    p.vertex(x, y + bh / 2 + 2);
+    p.bezierVertex(x + 4, y + bh / 2 + 16, x - 4, y + bh / 2 + 28, x, y + bh / 2 + 36);
+    p.endShape();
+    p.noStroke();
+  }
+
+  function drawCounter(bx, by, clicks) {
+    const sc = balloonScale(clicks);
+    const bh = 96 * sc;
+    const counterY = by + bh / 2 + 32 + Math.sin(p.frameCount * 0.025) * 4;
+    p.noStroke();
+    p.fill(200, 185, 155, clicks === 0 ? 60 : 160);
+    p.textAlign(p.CENTER, p.CENTER);
+    p.textSize(13);
+    p.textStyle(p.NORMAL);
+    p.text(`${clicks} / ${MAX_CLICKS}`, bx, counterY);
+  }
+
+  function spawnParticles(x, y) {
+    const count = 28;
+    for (let i = 0; i < count; i++) {
+      const angle = p.random(p.TWO_PI);
+      const speed = p.random(2.5, 8);
+      const lerpT = p.random();
+      particles.push({
+        x: x + p.random(-15, 15),
+        y: y + p.random(-20, 20),
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - p.random(1, 3),
+        life: 1.0,
+        col: p.lerpColor(calmColor, tenseColor, lerpT),
+        size: p.random(6, 18)
+      });
+    }
+  }
+
+  // ── Click detection
+  p.mousePressed = function() {
+    if (state.livesLeft === 0 || shaking || transitioning) return;
+
+    const bx = cw / 2;
+    const by = ch * 0.52 + Math.sin(p.frameCount * 0.025) * 4;
+    const sc = balloonScale(state.balloons[0]);
+    const bw = 80 * sc;
+    const bh = 96 * sc;
+
+    // Check if click is within balloon ellipse
+    const dx = (p.mouseX - bx) / (bw / 2);
+    const dy = (p.mouseY - by) / (bh / 2);
+    if (dx * dx + dy * dy <= 1.2) {
+      state.balloons[0]++;
+      targetClicks = state.balloons[0];
+      puffExtra = 0.15;
+
+      if (state.balloons[0] >= MAX_CLICKS) {
+        // Trigger burst
+        shaking = true;
+        shakeTimer = 0;
+        saveState(state);
+      } else {
+        saveState(state);
+      }
+    }
+  };
+
+});
+</script>
+</body>
+</html>
