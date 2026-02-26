@@ -15,7 +15,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      min-height: 100vh;
+      height: 100dvh; /* dvh accounts for iOS Safari toolbar */
       overflow: hidden;
     }
 
@@ -295,6 +295,12 @@ new p5(function(p) {
     cw = container.offsetWidth;
     ch = container.offsetHeight;
     p.resizeCanvas(cw, ch);
+    // Recompute canvas size after iOS toolbar appears/disappears
+    setTimeout(() => {
+      cw = container.offsetWidth;
+      ch = container.offsetHeight;
+      p.resizeCanvas(cw, ch);
+    }, 300);
   };
 
   p.draw = function() {
@@ -524,8 +530,8 @@ new p5(function(p) {
     }
   }
 
-  // ── Click detection
-  p.mousePressed = function() {
+  // ── Shared tap/click handler
+  function handleTap(px, py) {
     if (state.livesLeft === 0 || shaking || transitioning) return;
 
     const bx = cw / 2;
@@ -534,23 +540,32 @@ new p5(function(p) {
     const bw = 80 * sc;
     const bh = 96 * sc;
 
-    // Check if click is within balloon ellipse
-    const dx = (p.mouseX - bx) / (bw / 2);
-    const dy = (p.mouseY - by) / (bh / 2);
+    const dx = (px - bx) / (bw / 2);
+    const dy = (py - by) / (bh / 2);
     if (dx * dx + dy * dy <= 1.2) {
       state.balloons[0]++;
       targetClicks = state.balloons[0];
       puffExtra = 0.15;
 
       if (state.balloons[0] >= MAX_CLICKS) {
-        // Trigger burst
         shaking = true;
         shakeTimer = 0;
-        saveState(state);
-      } else {
-        saveState(state);
       }
+      saveState(state);
     }
+  }
+
+  // ── Mouse (desktop)
+  p.mousePressed = function() {
+    handleTap(p.mouseX, p.mouseY);
+  };
+
+  // ── Touch (mobile)
+  p.touchStarted = function() {
+    if (p.touches.length > 0) {
+      handleTap(p.touches[0].x, p.touches[0].y);
+    }
+    return false; // prevent default scroll/zoom
   };
 
 });
