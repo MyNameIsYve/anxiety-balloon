@@ -560,12 +560,14 @@ new p5(function(p) {
     handleTap(p.mouseX, p.mouseY);
   };
 
-  // ── Touch (mobile)
-  p.touchStarted = function() {
+  // ── Touch (mobile) — only handle touches directly on the canvas
+  p.touchStarted = function(e) {
+    const target = e && e.target;
+    if (target && target.tagName !== 'CANVAS') return true;
     if (p.touches.length > 0) {
       handleTap(p.touches[0].x, p.touches[0].y);
     }
-    return false; // prevent default scroll/zoom
+    return false; // prevent default scroll/zoom on canvas only
   };
 
 });
