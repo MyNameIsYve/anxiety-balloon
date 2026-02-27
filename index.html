@@ -11,6 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="Balloon">
   <link rel="apple-touch-icon" href="/icon.svg">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -140,10 +141,25 @@
       color: #e8d8c0;
       background: rgba(107, 91, 149, 0.15);
     }
+
+    #settings-link {
+      position: fixed;
+      top: 16px;
+      right: 18px;
+      z-index: 50;
+      color: #6b5b95;
+      text-decoration: none;
+      font-size: 20px;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+      line-height: 1;
+    }
+    #settings-link:hover { opacity: 1; }
   </style>
 </head>
 <body>
 
+<a id="settings-link" href="/settings.html" title="Settings &amp; Profile">⚙</a>
 <div id="canvas-container"></div>
 
 <div id="ui">
@@ -160,6 +176,101 @@
 </div>
 
 <script>
+// ─── Supabase ─────────────────────────────────────────────────────────────────
+
+const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let _user = null;
+let _gameId = null;
+
+async function initSupabase() {
+  const { data: { session } } = await _supabase.auth.getSession();
+  _user = session?.user ?? null;
+  if (_user) {
+    await loadFromSupabase();
+  }
+}
+
+async function loadFromSupabase() {
+  const { data, error } = await _supabase
+    .from('game_state')
+    .select('*')
+    .eq('user_id', _user.id)
+    .single();
+
+  if (error || !data) {
+    // No cloud state yet — migrate localStorage data up
+    await migrateLocalToSupabase();
+    return;
+  }
+
+  _gameId = data.game_id;
+  // Overwrite in-memory and localStorage with cloud state
+  state = {
+    balloons: data.balloons,
+    livesLeft: data.lives_left,
+    sessionStart: new Date(data.session_start).getTime()
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  updateFooter();
+}
+
+async function migrateLocalToSupabase() {
+  // Create a new game row for the current session
+  const { data: game } = await _supabase
+    .from('games')
+    .insert({
+      user_id: _user.id,
+      started_at: new Date(state.sessionStart).toISOString(),
+      is_active: true
+    })
+    .select()
+    .single();
+
+  if (game) {
+    _gameId = game.id;
+    await syncStateToSupabase(state);
+  }
+}
+
+async function syncStateToSupabase(s) {
+  if (!_user) return;
+  await _supabase.from('game_state').upsert({
+    user_id: _user.id,
+    game_id: _gameId,
+    balloons: s.balloons,
+    lives_left: s.livesLeft,
+    session_start: new Date(s.sessionStart).toISOString(),
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'user_id' });
+}
+
+async function recordGameOver(daysSurvived, balloonsPopped) {
+  if (!_user || !_gameId) return;
+  // Close the current game
+  await _supabase.from('games').update({
+    ended_at: new Date().toISOString(),
+    days_survived: daysSurvived,
+    balloons_popped: balloonsPopped,
+    is_active: false
+  }).eq('id', _gameId);
+
+  // Start a new game row
+  const { data: newGame } = await _supabase
+    .from('games')
+    .insert({
+      user_id: _user.id,
+      started_at: new Date().toISOString(),
+      is_active: true
+    })
+    .select()
+    .single();
+
+  if (newGame) _gameId = newGame.id;
+}
+
 // ─── State ───────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'anxiety-balloon-v1';
@@ -191,6 +302,7 @@ function loadState() {
 
 function saveState(s) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  syncStateToSupabase(s); // fire and forget
 }
 
 function clearState() {
@@ -198,6 +310,7 @@ function clearState() {
 }
 
 let state = loadState();
+initSupabase(); // async — loads cloud state if signed in
 
 // ─── Footer ──────────────────────────────────────────────────────────────────
 
@@ -224,16 +337,16 @@ function showGameOver() {
     days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'}`;
   document.getElementById('game-over').classList.add('visible');
   document.getElementById('affirmation-btn').disabled = true;
+  recordGameOver(days, TOTAL_LIVES - state.livesLeft); // sync to Supabase
 }
 
 document.getElementById('restart-btn').addEventListener('click', () => {
   clearState();
   state = defaultState();
-  saveState(state);
+  saveState(state); // saves locally + syncs new state to Supabase
   document.getElementById('game-over').classList.remove('visible');
   document.getElementById('affirmation-btn').disabled = false;
   updateFooter();
-  // Signal p5 to reinitialize
   window._resetBalloon = true;
 });
 

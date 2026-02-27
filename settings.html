@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Balloon — Settings</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      color: #c9b99a;
+      font-family: 'Georgia', serif;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 24px 40px;
+    }
+
+    #back {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      color: #6b5b95;
+      text-decoration: none;
+      font-size: 14px;
+      letter-spacing: 1px;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    #back:hover { opacity: 1; }
+
+    .page-title {
+      font-size: 13px;
+      letter-spacing: 3px;
+      color: #6b5b95;
+      text-transform: uppercase;
+      margin-bottom: 48px;
+      margin-top: 8px;
+    }
+
+    /* ── Not signed in ── */
+    #signed-out {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      text-align: center;
+      max-width: 320px;
+    }
+
+    #signed-out p {
+      font-size: 14px;
+      color: #8a7a6a;
+      line-height: 1.7;
+    }
+
+    #google-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #fff;
+      color: #3c3c3c;
+      border: none;
+      border-radius: 6px;
+      padding: 11px 22px;
+      font-size: 14px;
+      font-family: 'Georgia', serif;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      margin-top: 8px;
+    }
+    #google-btn:hover { opacity: 0.88; }
+    #google-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+    /* ── Signed in ── */
+    #signed-in {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 32px;
+      width: 100%;
+      max-width: 340px;
+    }
+
+    .profile {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 2px solid #6b5b95;
+      object-fit: cover;
+    }
+
+    .avatar-placeholder {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 2px solid #6b5b95;
+      background: #2a1f4a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: #6b5b95;
+    }
+
+    .user-name {
+      font-size: 18px;
+      color: #c9b99a;
+    }
+
+    .user-email {
+      font-size: 12px;
+      color: #6b5b95;
+      letter-spacing: 0.5px;
+    }
+
+    /* Stats */
+    .stats {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      border: 1px solid #2a2040;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      background: #12102a;
+    }
+
+    .stat-row:first-child { border-radius: 12px 12px 0 0; }
+    .stat-row:last-child  { border-radius: 0 0 12px 12px; }
+
+    .stat-label {
+      font-size: 13px;
+      color: #8a7a6a;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: 18px;
+      color: #c9b99a;
+    }
+
+    .stat-value.highlight {
+      color: #9b8ab8;
+    }
+
+    /* Sign out */
+    #signout-btn {
+      background: transparent;
+      border: 1px solid #3a2a5a;
+      color: #6b5b95;
+      font-family: 'Georgia', serif;
+      font-size: 13px;
+      padding: 10px 28px;
+      border-radius: 30px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all 0.25s;
+      margin-top: 8px;
+    }
+    #signout-btn:hover {
+      border-color: #6b5b95;
+      color: #c9b99a;
+    }
+
+    .loading {
+      color: #6b5b95;
+      font-size: 13px;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+
+<a id="back" href="/">← back</a>
+
+<div class="page-title">Settings</div>
+
+<div class="loading" id="loading">···</div>
+
+<!-- Not signed in -->
+<div id="signed-out" style="display:none">
+  <p>Sign in to sync your balloons across devices and track your personal best streak.</p>
+  <button id="google-btn">
+    <!-- Google "G" logo -->
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+    </svg>
+    Sign in with Google
+  </button>
+</div>
+
+<!-- Signed in -->
+<div id="signed-in">
+  <div class="profile">
+    <div id="avatar-wrap"></div>
+    <div class="user-name" id="user-name">—</div>
+    <div class="user-email" id="user-email">—</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat-row">
+      <span class="stat-label">Current streak</span>
+      <span class="stat-value highlight" id="current-streak">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Personal best</span>
+      <span class="stat-value" id="best-streak">—</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Total balloons popped</span>
+      <span class="stat-value" id="total-popped">—</span>
+    </div>
+  </div>
+
+  <button id="signout-btn">Sign out</button>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const VERCEL_URL = window.location.origin;
+
+async function init() {
+  const { data: { session } } = await _supabase.auth.getSession();
+  document.getElementById('loading').style.display = 'none';
+
+  if (session?.user) {
+    showSignedIn(session.user);
+  } else {
+    // Handle OAuth redirect — session may be in URL hash
+    const { data: { session: hashSession } } = await _supabase.auth.getSession();
+    if (hashSession?.user) {
+      showSignedIn(hashSession.user);
+    } else {
+      document.getElementById('signed-out').style.display = 'flex';
+    }
+  }
+}
+
+function showSignedIn(user) {
+  document.getElementById('signed-in').style.display = 'flex';
+
+  const meta = user.user_metadata;
+  document.getElementById('user-name').textContent = meta.full_name || meta.name || 'You';
+  document.getElementById('user-email').textContent = user.email || '';
+
+  // Avatar
+  const avatarWrap = document.getElementById('avatar-wrap');
+  if (meta.avatar_url || meta.picture) {
+    const img = document.createElement('img');
+    img.src = meta.avatar_url || meta.picture;
+    img.className = 'avatar';
+    img.alt = 'Profile photo';
+    avatarWrap.appendChild(img);
+  } else {
+    const ph = document.createElement('div');
+    ph.className = 'avatar-placeholder';
+    ph.textContent = (meta.full_name || meta.name || 'Y')[0].toUpperCase();
+    avatarWrap.appendChild(ph);
+  }
+
+  loadStats(user.id);
+}
+
+async function loadStats(userId) {
+  // Current streak from game_state
+  const { data: gs } = await _supabase
+    .from('game_state')
+    .select('session_start, lives_left')
+    .eq('user_id', userId)
+    .single();
+
+  if (gs) {
+    const days = Math.floor((Date.now() - new Date(gs.session_start).getTime()) / 86400000);
+    document.getElementById('current-streak').textContent =
+      days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'}`;
+  } else {
+    document.getElementById('current-streak').textContent = '—';
+  }
+
+  // Personal best from completed games
+  const { data: games } = await _supabase
+    .from('games')
+    .select('days_survived, balloons_popped')
+    .eq('user_id', userId);
+
+  if (games && games.length > 0) {
+    const best = Math.max(...games.map(g => g.days_survived));
+    const totalPopped = games.reduce((sum, g) => sum + (g.balloons_popped || 0), 0);
+    document.getElementById('best-streak').textContent =
+      best === 0 ? '< 1 day' : `${best} day${best === 1 ? '' : 's'}`;
+    document.getElementById('total-popped').textContent = totalPopped;
+  } else {
+    document.getElementById('best-streak').textContent = '—';
+    document.getElementById('total-popped').textContent = '0';
+  }
+}
+
+document.getElementById('google-btn').addEventListener('click', async () => {
+  await _supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: VERCEL_URL + '/settings.html' }
+  });
+});
+
+document.getElementById('signout-btn').addEventListener('click', async () => {
+  await _supabase.auth.signOut();
+  window.location.reload();
+});
+
+init();
+</script>
+</body>
+</html>
