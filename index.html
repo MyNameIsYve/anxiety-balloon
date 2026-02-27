@@ -144,8 +144,8 @@
 
     #settings-link {
       position: fixed;
-      top: calc(16px + env(safe-area-inset-top, 0px));
-      right: calc(18px + env(safe-area-inset-right, 0px));
+      top: max(52px, calc(env(safe-area-inset-top, 0px) + 16px));
+      right: max(18px, calc(env(safe-area-inset-right, 0px) + 18px));
       z-index: 50;
       color: #6b5b95;
       text-decoration: none;
@@ -219,6 +219,16 @@ async function loadFromSupabase() {
 }
 
 async function migrateLocalToSupabase() {
+  // Reuse an existing active game if one already exists (idempotent)
+  const { data: existing } = await _supabase
+    .from('games').select('id').eq('user_id', _user.id).eq('is_active', true).maybeSingle();
+
+  if (existing) {
+    _gameId = existing.id;
+    await syncStateToSupabase(state);
+    return;
+  }
+
   // Create a new game row for the current session
   const { data: game } = await _supabase
     .from('games')
@@ -236,9 +246,16 @@ async function migrateLocalToSupabase() {
   }
 }
 
-function syncBalloonsPopped() {
-  if (!_user || !_gameId) return;
-  _supabase.from('games').update({ balloons_popped: _balloonsPopped }).eq('id', _gameId);
+async function syncBalloonsPopped() {
+  if (!_user) return;
+  // Lazy repair: if _gameId is missing, attempt to create/find the game row
+  if (!_gameId) await migrateLocalToSupabase();
+  if (!_gameId) return;
+  // Filter by is_active=true as a safety net in case _gameId is stale
+  _supabase.from('games')
+    .update({ balloons_popped: _balloonsPopped })
+    .eq('user_id', _user.id)
+    .eq('is_active', true);
 }
 
 async function syncStateToSupabase(s) {
@@ -256,28 +273,16 @@ async function syncStateToSupabase(s) {
 async function recordGameOver(daysSurvived, balloonsPopped) {
   if (!_user) return;
 
-  // Fallback: if game row was never created, create it now
-  if (!_gameId) {
-    const { data: game } = await _supabase
-      .from('games')
-      .insert({
-        user_id: _user.id,
-        started_at: new Date(state.sessionStart).toISOString(),
-        is_active: true
-      })
-      .select()
-      .single();
-    if (!game) return; // give up if insert still fails
-    _gameId = game.id;
-  }
+  // Lazy repair: ensure there is an active game row to close
+  if (!_gameId) await migrateLocalToSupabase();
 
-  // Close the current game
+  // Close active game(s) — filter by is_active in case _gameId is stale
   await _supabase.from('games').update({
     ended_at: new Date().toISOString(),
     days_survived: daysSurvived,
     balloons_popped: balloonsPopped,
     is_active: false
-  }).eq('id', _gameId);
+  }).eq('user_id', _user.id).eq('is_active', true);
 
   // Start a new game row
   const { data: newGame } = await _supabase
@@ -290,7 +295,11 @@ async function recordGameOver(daysSurvived, balloonsPopped) {
     .select()
     .single();
 
-  if (newGame) _gameId = newGame.id;
+  if (newGame) {
+    _gameId = newGame.id;
+    // Persist new game_id into game_state so next page load has the correct ID
+    _supabase.from('game_state').update({ game_id: _gameId }).eq('user_id', _user.id);
+  }
 }
 
 // ─── State ───────────────────────────────────────────────────────────────────

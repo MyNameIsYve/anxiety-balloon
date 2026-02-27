@@ -1,4 +1,4 @@
-const CACHE = 'anxiety-balloon-v2';
+const CACHE = 'anxiety-balloon-v3';
 
 const PRECACHE = [
   '/',
