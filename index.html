@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Anxiety Balloon</title>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#1a1a2e">
@@ -144,8 +144,8 @@
 
     #settings-link {
       position: fixed;
-      top: 16px;
-      right: 18px;
+      top: calc(16px + env(safe-area-inset-top, 0px));
+      right: calc(18px + env(safe-area-inset-right, 0px));
       z-index: 50;
       color: #6b5b95;
       text-decoration: none;
@@ -200,8 +200,8 @@ async function loadFromSupabase() {
     .eq('user_id', _user.id)
     .single();
 
-  if (error || !data) {
-    // No cloud state yet — migrate localStorage data up
+  if (error || !data || !data.game_id) {
+    // No cloud state yet, or game_id is null (broken state) — repair by migrating
     await migrateLocalToSupabase();
     return;
   }
@@ -248,7 +248,23 @@ async function syncStateToSupabase(s) {
 }
 
 async function recordGameOver(daysSurvived, balloonsPopped) {
-  if (!_user || !_gameId) return;
+  if (!_user) return;
+
+  // Fallback: if game row was never created, create it now
+  if (!_gameId) {
+    const { data: game } = await _supabase
+      .from('games')
+      .insert({
+        user_id: _user.id,
+        started_at: new Date(state.sessionStart).toISOString(),
+        is_active: true
+      })
+      .select()
+      .single();
+    if (!game) return; // give up if insert still fails
+    _gameId = game.id;
+  }
+
   // Close the current game
   await _supabase.from('games').update({
     ended_at: new Date().toISOString(),
