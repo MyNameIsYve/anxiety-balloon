@@ -184,6 +184,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_VQwQE0mdGnqwLtcHzj6toQ_BoCd9dc6';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let _user = null;
 let _gameId = null;
+let _balloonsPopped = 0;
 
 async function initSupabase() {
   const { data: { session } } = await _supabase.auth.getSession();
@@ -233,6 +234,11 @@ async function migrateLocalToSupabase() {
     _gameId = game.id;
     await syncStateToSupabase(state);
   }
+}
+
+function syncBalloonsPopped() {
+  if (!_user || !_gameId) return;
+  _supabase.from('games').update({ balloons_popped: _balloonsPopped }).eq('id', _gameId);
 }
 
 async function syncStateToSupabase(s) {
@@ -353,12 +359,13 @@ function showGameOver() {
     days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'}`;
   document.getElementById('game-over').classList.add('visible');
   document.getElementById('affirmation-btn').disabled = true;
-  recordGameOver(days, TOTAL_LIVES - state.livesLeft); // sync to Supabase
+  recordGameOver(days, _balloonsPopped); // sync to Supabase
 }
 
 document.getElementById('restart-btn').addEventListener('click', () => {
   clearState();
   state = defaultState();
+  _balloonsPopped = 0;
   saveState(state); // saves locally + syncs new state to Supabase
   document.getElementById('game-over').classList.remove('visible');
   document.getElementById('affirmation-btn').disabled = false;
@@ -508,7 +515,9 @@ new p5(function(p) {
         // Remove this balloon from state
         state.balloons.shift();
         state.livesLeft--;
+        _balloonsPopped++;
         saveState(state);
+        syncBalloonsPopped();
         if (state.livesLeft === 0) {
           setTimeout(showGameOver, 800);
         } else {
